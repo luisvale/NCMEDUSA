@@ -40,6 +40,41 @@ class StockPicking(models.Model):
             'target': 'new',  # Abrir como ventana modal
         }
 
+    def action_create_credit_note(self):
+        """
+        Crea la nota de crédito basada en este picking de devolución.
+        """
+        self.ensure_one()
+
+        if self.picking_type_id.code != 'incoming' or not self.origin:
+            raise ValueError(_("Este picking no está configurado como devolución o no tiene un origen válido."))
+
+        # Crear una factura de tipo devolución
+        invoice_vals = {
+            'type': 'out_refund',
+            'partner_id': self.partner_id.id,
+            'origin': self.name,
+            'invoice_line_ids': [(0, 0, {
+                'product_id': move.product_id.id,
+                'quantity': move.quantity_done,
+                'price_unit': move.product_id.list_price,
+                'name': move.product_id.name,
+            }) for move in self.move_lines if move.quantity_done > 0],
+        }
+        credit_note = self.env['account.invoice'].create(invoice_vals)
+
+        # Retornar vista de la nota de crédito creada
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Nota de Crédito'),
+            'res_model': 'account.invoice',
+            'view_mode': 'form',
+            'res_id': credit_note.id,
+            'target': 'current',
+        }
+
+
+
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
@@ -112,11 +147,22 @@ class AccountInvoice(models.Model):
 
 
     @api.multi
+
     def action_invoice_open(self):
         """
-        Modifica la validación de la nota de crédito para verificar el check.
+        Al confirmar la nota de crédito, valida el picking de devolución asociado.
         """
+        res = super(AccountInvoice, self).action_invoice_open()
         for invoice in self:
-            if invoice.type == 'out_refund' and not invoice.check_return:
-                raise ValueError(_("No se puede validar la nota de crédito porque las devoluciones no están completadas."))
-        return super(AccountInvoice, self).action_invoice_open()
+            if invoice.type == 'out_refund' and invoice.origin:
+                # Buscar el picking relacionado al origen de la factura
+                picking = self.env['stock.picking'].search([('name', '=', invoice.origin)], limit=1)
+                if picking and picking.state not in ['done']:
+                    # Confirmar y validar el picking
+                    picking.action_confirm()
+                    picking.action_assign()
+                    for move in picking.move_lines:
+                        move.quantity_done = move.product_uom_qty
+                    picking.button_validate()
+
+        return res
