@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 
+
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
 
@@ -21,6 +22,31 @@ class StockReturnPicking(models.TransientModel):
             }
 
         return res
+
+
+class StockPicking(models.Model):
+    _inherit = 'stock.picking'
+
+    def action_return_picking_wizard(self):
+        """
+        Abre automáticamente el wizard de devolución desde el picking.
+        """
+        self.ensure_one()
+
+        # Crear el wizard de devolución
+        return_wizard = self.env['stock.return.picking'].create({
+            'picking_id': self.id,
+        })
+
+        # Redirigir al wizard de devolución
+        return {
+            'name': _('Devolución de Inventario'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.return.picking',
+            'view_mode': 'form',
+            'res_id': return_wizard.id,
+            'target': 'new',  # Abrir como ventana modal
+        }
 
 
 
@@ -52,7 +78,6 @@ class AccountInvoice(models.Model):
         return picking.with_context({
             'return_to_invoice_id': self.id  # Contexto para regresar a la factura al cerrar
         }).action_return_picking_wizard()
-
 
 
 
