@@ -1,52 +1,51 @@
-from odoo import models, api
+from odoo import models, fields, api, _
 
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
 
-    @api.multi
-    def action_invoice_open(self):
-        res = super(AccountInvoice, self).action_invoice_open()
-        for invoice in self:
-            if invoice.type == 'out_refund' and invoice.refund_invoice_id:
-                # Obtener la factura original
-                original_invoice = invoice.refund_invoice_id
+    check_return = fields.Boolean(
+        string="Devolución Completada",
+        default=False,
+        help="Este campo se activa automáticamente cuando se completa la devolución de los productos asociados a la factura."
+    )
 
-                # Acceder al pedido de venta desde el campo relacionado
-                sale_order = original_invoice.sale_order_id
-
-                if sale_order:
-                    # Filtrar solo los pickings en estado 'done'
-                    pickings_done = sale_order.picking_ids.filtered(lambda p: p.state == 'done')
-
-                    if pickings_done:
-                        for picking in pickings_done:
-                            self._execute_return_wizard(picking)
-        return res
-
-    def _execute_return_wizard(self, picking):
+    def action_open_return_wizard_from_invoice(self):
         """
-        Ejecuta el wizard de devolución para el picking proporcionado.
+        Ejecuta el wizard de devolución desde la factura.
         """
-        # Verificar que el picking existe y es válido
-        if not picking or not picking.exists():
-            return
+        self.ensure_one()
+        if not self.sale_order_id or not self.sale_order_id.picking_ids:
+            raise ValueError(_("No hay movimientos de inventario asociados a esta factura."))
+
+        # Filtrar los pickings en estado 'done'
+        pickings_done = self.sale_order_id.picking_ids.filtered(lambda p: p.state == 'done')
+        if not pickings_done:
+            raise ValueError(_("No hay movimientos de inventario completados para devolver."))
+
+        # Tomar el primer picking (puedes ajustar para manejar múltiples pickings)
+        picking = pickings_done[0]
 
         # Crear el wizard de devolución
         return_wizard = self.env['stock.return.picking'].create({
             'picking_id': picking.id,
         })
 
-        # Llenar automáticamente las líneas del wizard
-        return_wizard_lines = []
-        for move in picking.move_lines:
-            if move.product_id.type != 'service':  # Ignorar servicios
-                return_wizard_lines.append((0, 0, {
-                    'product_id': move.product_id.id,
-                    'quantity': move.quantity_done,
-                    'move_id': move.id,
-                }))
+        # Redirigir al wizard
+        return {
+            'name': _('Devolución de Inventario'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.return.picking',
+            'view_mode': 'form',
+            'res_id': return_wizard.id,
+            'target': 'new',
+        }
 
-        if return_wizard_lines:
-            return_wizard.write({'product_return_moves': return_wizard_lines})
-            # Ejecutar la devolución
-            return_wizard.create_returns()
+    @api.multi
+    def action_invoice_open(self):
+        """
+        Modifica la validación de la nota de crédito para verificar el check.
+        """
+        for invoice in self:
+            if invoice.type == 'out_refund' and not invoice.check_return:
+                raise ValueError(_("No se puede validar la nota de crédito porque la devolución de inventario no está completada."))
+        return super(AccountInvoice, self).action_invoice_open()

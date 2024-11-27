@@ -9,6 +9,7 @@
     'author': 'MEDUSA',
     'depends': ['account', 'sale', 'stock'],  # Dependencias del módulo
     'data': [
+        'views/account_invoice_views.xml',  # Registro de la vista
     ],
     'installable': True,
     'auto_install': False,
