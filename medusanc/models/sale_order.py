@@ -1,22 +1,27 @@
 from odoo import models, fields, api, _
 
-class StockPicking(models.Model):
-    _inherit = 'stock.picking'
+class StockReturnPicking(models.TransientModel):
+    _inherit = 'stock.return.picking'
 
-    def button_validate(self):
+    def create_returns(self):
         """
-        Sobrescribe la validación del picking para regresar a la factura cuando proviene de ese flujo.
+        Sobrescribe la acción para devolver al usuario a la factura después de procesar.
         """
-        res = super(StockPicking, self).button_validate()
+        res = super(StockReturnPicking, self).create_returns()
 
-        # Verificar si el picking está relacionado con una factura
-        if self.origin and self.sale_id:
-            invoice = self.env['account.invoice'].search([('validated_picking_id', '=', self.id)], limit=1)
-            if invoice:
-                # Marcar como completada la devolución en la factura
-                invoice.check_return = True
+        # Si el contexto incluye una factura, redirigir al usuario a la factura
+        if self.env.context.get('return_to_invoice_id'):
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Factura'),
+                'res_model': 'account.invoice',
+                'view_mode': 'form',
+                'res_id': self.env.context['return_to_invoice_id'],
+                'target': 'current',  # Regresar a la factura en la misma pestaña
+            }
 
         return res
+
 
 
 class AccountInvoice(models.Model):
@@ -28,9 +33,9 @@ class AccountInvoice(models.Model):
         help="Este campo se activa cuando el usuario completa las devoluciones relacionadas con el picking validado."
     )
 
-    def action_open_related_picking(self):
+    def action_open_return_wizard(self):
         """
-        Abre directamente la pantalla del picking relacionado con la factura.
+        Abre la pantalla del picking relacionado y automáticamente muestra el wizard de devolución.
         """
         self.ensure_one()
 
@@ -38,20 +43,15 @@ class AccountInvoice(models.Model):
         if not self.validated_picking_id:
             raise ValueError(_("Esta factura no tiene un picking validado asociado."))
 
-        # Asegurarse de que el picking existe y está relacionado correctamente
+        # Verificar que el picking está en estado 'done'
         picking = self.validated_picking_id
-        if not picking.exists():
-            raise ValueError(_("El picking relacionado no existe o ha sido eliminado."))
+        if picking.state != 'done':
+            raise ValueError(_("El picking asociado a esta factura no está en estado 'done'."))
 
-        # Abrir la pantalla del picking relacionado
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Picking Relacionado'),
-            'res_model': 'stock.picking',
-            'view_mode': 'form',
-            'res_id': picking.id,
-            'target': 'new',  # Abrir en una ventana modal para mantener la conexión con la factura
-        }
+        # Ejecutar automáticamente el botón 'Devolver' y abrir el wizard
+        return picking.with_context({
+            'return_to_invoice_id': self.id  # Contexto para regresar a la factura al cerrar
+        }).action_return_picking_wizard()
 
 
 
