@@ -6,30 +6,23 @@ class AccountInvoice(models.Model):
     check_return = fields.Boolean(
         string="Devolución Completada",
         default=False,
-        help="Este campo se activa cuando el usuario completa las devoluciones relacionadas con los pickings del pedido."
+        help="Este campo se activa cuando el usuario completa las devoluciones relacionadas con el picking validado."
     )
 
     def action_open_return_wizard(self):
         """
-        Abre el wizard de devolución desde la factura, buscando los pickings relacionados con el sale_order_id.
+        Abre el wizard de devolución desde la factura utilizando el picking especificado en 'validated_picking_id'.
         """
         self.ensure_one()
 
-        # Verificar que la factura tiene un sale_order_id válido
-        if not self.sale_order_id:
-            raise ValueError(_("La factura no tiene un pedido de venta relacionado para buscar los pickings."))
+        # Verificar que la factura tiene un picking validado
+        if not self.validated_picking_id:
+            raise ValueError(_("Esta factura no tiene un picking validado asociado para la devolución."))
 
-        # Buscar los pickings relacionados con el pedido de venta
-        pickings_done = self.env['stock.picking'].search([
-            ('sale_id', '=', self.sale_order_id.id),  # Filtrar por el pedido de venta relacionado
-            ('state', '=', 'done')  # Solo pickings en estado 'done'
-        ])
-
-        if not pickings_done:
-            raise ValueError(_("No se encontraron pickings relacionados en estado 'done' para este pedido de venta."))
-
-        # Tomar el primer picking encontrado (puedes iterar si necesitas procesar varios)
-        picking = pickings_done[0]
+        # Asegurarse de que el picking está en estado 'done'
+        picking = self.validated_picking_id
+        if picking.state != 'done':
+            raise ValueError(_("El picking asociado a esta factura no está en estado 'done'."))
 
         # Crear el wizard de devolución
         return_wizard = self.env['stock.return.picking'].create({
