@@ -40,34 +40,52 @@ class StockPicking(models.Model):
             'target': 'new',  # Abrir como ventana modal
         }
 
+
     def action_create_credit_note(self):
         """
-        Crea la nota de crédito basada en este picking de devolución.
+        Genera una nota de crédito basada en los productos y cantidades del picking.
         """
-        self.ensure_one()
+        self.ensure_one()  # Asegurarse de que el botón se ejecuta sobre un único picking
 
-        if self.picking_type_id.code != 'incoming' or not self.origin:
-            raise ValueError(_("Este picking no está configurado como devolución o no tiene un origen válido."))
+        if self.state != 'done':
+            raise ValueError(_("El picking debe estar en estado 'done' para generar una nota de crédito."))
 
-        # Crear una factura de tipo devolución
-        invoice_vals = {
-            'type': 'out_refund',
-            'partner_id': self.partner_id.id,
-            'origin': self.name,
-            'invoice_line_ids': [(0, 0, {
-                'product_id': move.product_id.id,
-                'quantity': move.quantity_done,
-                'price_unit': move.product_id.list_price,
-                'name': move.product_id.name,
-            }) for move in self.move_lines if move.quantity_done > 0],
-        }
-        credit_note = self.env['account.invoice'].create(invoice_vals)
+        # Buscar la factura original relacionada
+        invoice = self.env['account.move'].search([
+            ('validated_picking_id', '=', self.id),
+            ('state', '=', 'posted'),
+            ('move_type', '=', 'out_invoice')
+        ], limit=1)
 
-        # Retornar vista de la nota de crédito creada
+        if not invoice:
+            raise ValueError(_("No se encontró una factura relacionada con este picking."))
+
+        # Crear las líneas de la nota de crédito
+        credit_note_lines = []
+        for move in self.move_lines:
+            if move.quantity_done > 0:  # Considerar solo los productos efectivamente entregados
+                credit_note_lines.append((0, 0, {
+                    'product_id': move.product_id.id,
+                    'quantity': move.quantity_done,
+                    'price_unit': move.product_id.lst_price,  # Precio unitario, puedes ajustarlo según necesidad
+                    'name': move.product_id.name,
+                    'tax_ids': [(6, 0, move.product_id.taxes_id.ids)],  # Impuestos del producto
+                    'account_id': invoice.line_ids[0].account_id.id,  # Usar la cuenta de la línea de factura original
+                }))
+
+        # Crear la nota de crédito
+        credit_note = self.env['account.move'].create({
+            'move_type': 'out_refund',
+            'partner_id': invoice.partner_id.id,
+            'invoice_date': fields.Date.today(),
+            'invoice_origin': self.origin,
+            'invoice_line_ids': credit_note_lines,
+        })
+
         return {
-            'type': 'ir.actions.act_window',
             'name': _('Nota de Crédito'),
-            'res_model': 'account.invoice',
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move',
             'view_mode': 'form',
             'res_id': credit_note.id,
             'target': 'current',
@@ -148,21 +166,18 @@ class AccountInvoice(models.Model):
 
     @api.multi
 
-    def action_invoice_open(self):
-        """
-        Al confirmar la nota de crédito, valida el picking de devolución asociado.
-        """
-        res = super(AccountInvoice, self).action_invoice_open()
-        for invoice in self:
-            if invoice.type == 'out_refund' and invoice.origin:
-                # Buscar el picking relacionado al origen de la factura
-                picking = self.env['stock.picking'].search([('name', '=', invoice.origin)], limit=1)
-                if picking and picking.state not in ['done']:
-                    # Confirmar y validar el picking
+    def action_post(self):
+        res = super(AccountMove, self).action_post()
+
+        for move in self:
+            if move.move_type == 'out_refund':
+                # Confirmar el picking de devolución relacionado
+                picking = self.env['stock.picking'].search([('origin', '=', move.invoice_origin)], limit=1)
+                if picking and picking.state not in ['done', 'cancel']:
                     picking.action_confirm()
                     picking.action_assign()
-                    for move in picking.move_lines:
-                        move.quantity_done = move.product_uom_qty
+                    for move_line in picking.move_lines:
+                        move_line.quantity_done = move_line.product_uom_qty
                     picking.button_validate()
 
         return res
