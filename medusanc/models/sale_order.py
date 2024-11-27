@@ -1,4 +1,4 @@
-from odoo import models, api, _
+from odoo import models, api
 
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
@@ -8,35 +8,38 @@ class AccountInvoice(models.Model):
         res = super(AccountInvoice, self).action_invoice_open()
         for invoice in self:
             if invoice.type == 'out_refund' and invoice.refund_invoice_id:
-                # Obtener la factura relacionada
+                # Obtener la factura original
                 original_invoice = invoice.refund_invoice_id
-                # Acceder al pedido de venta relacionado si existe
-                sale_order = original_invoice.invoice_line_ids.mapped('sale_line_ids').mapped('order_id')
+                
+                # Acceder al pedido de venta desde el campo relacionado
+                sale_order = original_invoice.sale_order_id
+                
                 if sale_order and sale_order.picking_ids:
+                    # Filtrar solo los pickings en estado 'done'
                     for picking in sale_order.picking_ids.filtered(lambda p: p.state == 'done'):
-                        self._create_inventory_return(picking, invoice)
+                        self._execute_return_wizard(picking)
         return res
 
-    def _create_inventory_return(self, picking, refund_invoice):
+    def _execute_return_wizard(self, picking):
         """
-        Crea la devolución de inventario en base al picking original y la nota de crédito.
+        Ejecuta el wizard de devolución para el picking proporcionado.
         """
-        stock_return_picking = self.env['stock.return.picking'].create({
+        # Crear el wizard de devolución
+        return_wizard = self.env['stock.return.picking'].create({
             'picking_id': picking.id,
         })
+        
+        # Llenar automáticamente las líneas del wizard
         return_wizard_lines = []
         for move in picking.move_lines:
-            # Busca la línea correspondiente de la nota de crédito
-            invoice_line = refund_invoice.invoice_line_ids.filtered(
-                lambda l: l.product_id == move.product_id and not l.product_id.type == 'service'
-            )
-            if invoice_line:
+            if move.product_id.type != 'service':  # Ignorar servicios
                 return_wizard_lines.append((0, 0, {
                     'product_id': move.product_id.id,
-                    'quantity': invoice_line.quantity,
+                    'quantity': move.quantity_done,
                     'move_id': move.id,
                 }))
 
         if return_wizard_lines:
-            stock_return_picking.write({'product_return_moves': return_wizard_lines})
-            stock_return_picking.create_returns()
+            return_wizard.write({'product_return_moves': return_wizard_lines})
+            # Ejecutar la devolución
+            return_wizard.create_returns()
