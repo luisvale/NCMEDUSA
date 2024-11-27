@@ -1,40 +1,45 @@
 from odoo import models, fields, api, _
 
 
+class StockPicking(models.Model):
+    _inherit = 'stock.picking'
 
-class StockReturnPicking(models.TransientModel):
-    _inherit = 'stock.return.picking'
-
-    def create_returns(self):
+    def action_return_picking_wizard(self):
         """
-        Sobrescribe la acción para:
-        1. Confirmar automáticamente el movimiento de devolución (sin validar).
-        2. Redirigir al usuario a la factura relacionada.
+        Abre automáticamente el wizard de devolución desde el picking
+        y configura las líneas del wizard con los movimientos del picking.
         """
-        res = super(StockReturnPicking, self).create_returns()
+        self.ensure_one()
 
-        # Obtener el picking de devolución recién creado
-        return_pickings = self.env['stock.picking'].browse(res.get('res_id', []))
-        for return_picking in return_pickings:
-            if return_picking.state in ['draft', 'waiting']:
-                # Confirmar automáticamente el picking de devolución
-                return_picking.action_confirm()
+        # Crear el wizard de devolución con la ubicación de devolución
+        return_wizard = self.env['stock.return.picking'].create({
+            'picking_id': self.id,
+            'location_id': self.location_id.id,  # Asignar ubicación del picking
+        })
 
-        # Si el contexto incluye una factura, redirigir al formulario de la factura
-        if self.env.context.get('return_to_invoice_id'):
-            return {
-                'type': 'ir.actions.act_window',
-                'name': _('Factura'),
-                'res_model': 'account.invoice',
-                'view_mode': 'form',
-                'res_id': self.env.context['return_to_invoice_id'],
-                'target': 'current',  # Regresar a la factura en la misma pestaña
-            }
+        # Crear las líneas del wizard basadas en los movimientos del picking
+        lines = []
+        for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
+            lines.append((0, 0, {
+                'product_id': move.product_id.id,
+                'quantity': move.quantity_done,
+                'move_id': move.id,
+            }))
 
-        return res
+        # Escribir las líneas en el wizard
+        if lines:
+            return_wizard.write({'product_return_moves': lines})
 
+        # Redirigir al wizard de devolución
+        return {
+            'name': _('Devolución de Inventario'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.return.picking',
+            'view_mode': 'form',
+            'res_id': return_wizard.id,
+            'target': 'new',  # Abrir como ventana modal
+        }
 
-from odoo import models, api, _
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
@@ -76,45 +81,6 @@ class StockReturnPicking(models.TransientModel):
         return res
 
 
-class StockPicking(models.Model):
-    _inherit = 'stock.picking'
-
-    def action_return_picking_wizard(self):
-        """
-        Abre automáticamente el wizard de devolución desde el picking
-        y configura las líneas del wizard con los movimientos del picking.
-        """
-        self.ensure_one()
-
-        # Crear el wizard de devolución con la ubicación de devolución
-        return_wizard = self.env['stock.return.picking'].create({
-            'picking_id': self.id,
-            'location_id': self.location_id.id,  # Asignar ubicación del picking
-        })
-
-        # Crear las líneas del wizard basadas en los movimientos del picking
-        lines = []
-        for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
-            lines.append((0, 0, {
-                'product_id': move.product_id.id,
-                'quantity': move.quantity_done,
-                'move_id': move.id,
-            }))
-
-        # Escribir las líneas en el wizard
-        if lines:
-            return_wizard.write({'product_return_moves': lines})
-
-        # Redirigir al wizard de devolución
-        return {
-            'name': _('Devolución de Inventario'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'stock.return.picking',
-            'view_mode': 'form',
-            'res_id': return_wizard.id,
-            'target': 'new',  # Abrir como ventana modal
-        }
-
 
 
 class AccountInvoice(models.Model):
@@ -145,8 +111,17 @@ class AccountInvoice(models.Model):
         return picking.with_context({
             'return_to_invoice_id': self.id  # Contexto para regresar a la factura al cerrar
         }).action_return_picking_wizard()
+        
 
-
+    @api.multi
+    def action_invoice_open(self):
+        """
+        Modifica la validación de la nota de crédito para verificar el check.
+        """
+        for invoice in self:
+            if invoice.type == 'out_refund' and not invoice.check_return:
+                raise ValueError(_("No se puede validar la nota de crédito porque las devoluciones no están completadas."))
+        return super(AccountInvoice, self).action_invoice_open()
 
     @api.multi
     def action_invoice_open(self):
