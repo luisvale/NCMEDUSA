@@ -11,24 +11,25 @@ class AccountInvoice(models.Model):
 
     def action_open_return_wizard(self):
         """
-        Abre el wizard de devolución desde la factura, filtrando los pickings por el origen de la factura.
+        Abre el wizard de devolución desde la factura, buscando los pickings relacionados con el campo 'origin' de la factura.
         """
         self.ensure_one()
 
-        # Verificar si hay un origen relacionado en la factura
+        # Verificar que la factura tiene un campo 'origin' válido
         if not self.origin:
-            raise ValueError(_("La factura no tiene un origen definido para buscar pickings relacionados."))
+            raise ValueError(_("La factura no tiene un 'origin' definido para buscar los pickings relacionados."))
 
-        # Buscar pickings relacionados con el origen de la factura
-        pickings_done = self.env['stock.picking'].search([
-            ('origin', '=', self.origin),  # Filtrar por el campo 'origin'
+        # Buscar los pickings relacionados directamente en stock.picking
+        pickings = self.env['stock.picking'].search([
+            ('origin', '=', self.origin),  # Filtrar por el campo 'origin' de la factura
             ('state', '=', 'done')  # Solo pickings en estado 'done'
         ])
-        if not pickings_done:
-            raise ValueError(_("No hay movimientos de inventario completados para devolver relacionados con esta factura."))
 
-        # Tomar el primer picking (ajusta si necesitas manejar múltiples pickings)
-        picking = pickings_done[0]
+        if not pickings:
+            raise ValueError(_("No se encontraron pickings relacionados en estado 'done' para el origen de esta factura."))
+
+        # Tomar el primer picking encontrado
+        picking = pickings[0]
 
         # Crear el wizard de devolución
         return_wizard = self.env['stock.return.picking'].create({
@@ -43,8 +44,7 @@ class AccountInvoice(models.Model):
             'view_mode': 'form',
             'res_id': return_wizard.id,
             'target': 'new',
-        }
-        
+        }        
     @api.multi
     def action_invoice_open(self):
         """
