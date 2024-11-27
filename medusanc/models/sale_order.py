@@ -11,25 +11,25 @@ class AccountInvoice(models.Model):
 
     def action_open_return_wizard(self):
         """
-        Abre el wizard de devolución desde la factura, buscando los pickings estrictamente relacionados con el 'origin'.
+        Abre el wizard de devolución desde la factura, buscando los pickings relacionados con el sale_order_id.
         """
         self.ensure_one()
 
-        # Verificar que la factura tiene un campo 'origin' válido
-        if not self.origin:
-            raise ValueError(_("La factura no tiene un 'origin' definido para buscar pickings relacionados."))
+        # Verificar que la factura tiene un sale_order_id válido
+        if not self.sale_order_id:
+            raise ValueError(_("La factura no tiene un pedido de venta relacionado para buscar los pickings."))
 
-        # Buscar los pickings relacionados directamente con el 'origin' de la factura
-        pickings = self.env['stock.picking'].search([
-            ('origin', '=', self.origin),  # Filtrar por el campo 'origin' de la factura
+        # Buscar los pickings relacionados con el pedido de venta
+        pickings_done = self.env['stock.picking'].search([
+            ('sale_id', '=', self.sale_order_id.id),  # Filtrar por el pedido de venta relacionado
             ('state', '=', 'done')  # Solo pickings en estado 'done'
-        ], limit=1)
+        ])
 
-        if not pickings:
-            raise ValueError(_("No se encontraron pickings relacionados en estado 'done' para el origen de esta factura."))
+        if not pickings_done:
+            raise ValueError(_("No se encontraron pickings relacionados en estado 'done' para este pedido de venta."))
 
-        # Tomar el picking encontrado
-        picking = pickings
+        # Tomar el primer picking encontrado (puedes iterar si necesitas procesar varios)
+        picking = pickings_done[0]
 
         # Crear el wizard de devolución
         return_wizard = self.env['stock.return.picking'].create({
@@ -44,7 +44,8 @@ class AccountInvoice(models.Model):
             'view_mode': 'form',
             'res_id': return_wizard.id,
             'target': 'new',
-        }        
+        }
+        
     @api.multi
     def action_invoice_open(self):
         """
