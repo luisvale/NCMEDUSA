@@ -5,7 +5,7 @@
         <field name="inherit_id" ref="account.invoice_form"/>
         <field name="arch" type="xml">
             <xpath expr="//header" position="inside">
-                <button name="action_open_return_wizard"
+                <button name="action_open_related_picking"
                         type="object"
                         string="Devolver Inventario"
                         class="btn-primary"
