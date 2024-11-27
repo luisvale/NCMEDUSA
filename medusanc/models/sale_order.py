@@ -19,12 +19,15 @@ class AccountInvoice(models.Model):
         if not self.sale_order_id:
             raise ValueError(_("No hay un pedido de venta relacionado a esta factura."))
 
-        # Filtrar los pickings en estado 'done' relacionados al pedido
-        pickings_done = self.sale_order_id.picking_ids.filtered(lambda p: p.state == 'done')
+        # Buscar pickings relacionados con el pedido de venta
+        pickings_done = self.env['stock.picking'].search([
+            ('sale_id', '=', self.sale_order_id.id),  # Relacionar con el pedido de venta
+            ('state', '=', 'done')  # Solo pickings en estado 'done'
+        ])
         if not pickings_done:
             raise ValueError(_("No hay movimientos de inventario completados para devolver."))
 
-        # Tomar el primer picking (o ajusta si quieres manejar múltiples pickings)
+        # Tomar el primer picking (puedes ajustar si quieres manejar múltiples pickings)
         picking = pickings_done[0]
 
         # Crear el wizard de devolución
