@@ -2,7 +2,7 @@
     <record id="view_account_invoice_form_inherit_return" model="ir.ui.view">
         <field name="name">account.invoice.form.inherit.return</field>
         <field name="model">account.invoice</field>
-        <field name="inherit_id" ref="account.view_invoice_form"/>
+        <field name="inherit_id" ref="account.invoice_form"/> <!-- ID correcto -->
         <field name="arch" type="xml">
             <xpath expr="//header" position="inside">
                 <button name="action_open_return_wizard_from_invoice"
