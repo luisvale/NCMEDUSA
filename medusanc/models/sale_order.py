@@ -10,25 +10,32 @@ class AccountInvoice(models.Model):
             if invoice.type == 'out_refund' and invoice.refund_invoice_id:
                 # Obtener la factura original
                 original_invoice = invoice.refund_invoice_id
-                
+
                 # Acceder al pedido de venta desde el campo relacionado
                 sale_order = original_invoice.sale_order_id
-                
-                if sale_order and sale_order.picking_ids:
+
+                if sale_order:
                     # Filtrar solo los pickings en estado 'done'
-                    for picking in sale_order.picking_ids.filtered(lambda p: p.state == 'done'):
-                        self._execute_return_wizard(picking)
+                    pickings_done = sale_order.picking_ids.filtered(lambda p: p.state == 'done')
+
+                    if pickings_done:
+                        for picking in pickings_done:
+                            self._execute_return_wizard(picking)
         return res
 
     def _execute_return_wizard(self, picking):
         """
         Ejecuta el wizard de devolución para el picking proporcionado.
         """
+        # Verificar que el picking existe y es válido
+        if not picking or not picking.exists():
+            return
+
         # Crear el wizard de devolución
         return_wizard = self.env['stock.return.picking'].create({
             'picking_id': picking.id,
         })
-        
+
         # Llenar automáticamente las líneas del wizard
         return_wizard_lines = []
         for move in picking.move_lines:
