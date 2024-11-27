@@ -1,5 +1,24 @@
 from odoo import models, fields, api, _
 
+class StockPicking(models.Model):
+    _inherit = 'stock.picking'
+
+    def button_validate(self):
+        """
+        Sobrescribe la validación del picking para regresar a la factura cuando proviene de ese flujo.
+        """
+        res = super(StockPicking, self).button_validate()
+
+        # Verificar si el picking está relacionado con una factura
+        if self.origin and self.sale_id:
+            invoice = self.env['account.invoice'].search([('validated_picking_id', '=', self.id)], limit=1)
+            if invoice:
+                # Marcar como completada la devolución en la factura
+                invoice.check_return = True
+
+        return res
+
+
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
 
@@ -9,37 +28,34 @@ class AccountInvoice(models.Model):
         help="Este campo se activa cuando el usuario completa las devoluciones relacionadas con el picking validado."
     )
 
-    def action_open_return_wizard(self):
+    def action_open_related_picking(self):
         """
-        Abre el wizard de devolución directamente desde el picking relacionado con la factura.
+        Abre directamente la pantalla del picking relacionado con la factura.
         """
         self.ensure_one()
 
         # Verificar que la factura tiene un picking validado
         if not self.validated_picking_id:
-            raise ValueError(_("Esta factura no tiene un picking validado asociado para la devolución."))
+            raise ValueError(_("Esta factura no tiene un picking validado asociado."))
 
-        # Verificar que el picking está en estado 'done'
+        # Asegurarse de que el picking existe y está relacionado correctamente
         picking = self.validated_picking_id
-        if picking.state != 'done':
-            raise ValueError(_("El picking asociado a esta factura no está en estado 'done'."))
+        if not picking.exists():
+            raise ValueError(_("El picking relacionado no existe o ha sido eliminado."))
 
-        # Crear el wizard de devolución
-        return_wizard = self.env['stock.return.picking'].create({
-            'picking_id': picking.id,
-        })
-
-        # Redirigir al wizard para que el usuario complete el proceso manualmente
+        # Abrir la pantalla del picking relacionado
         return {
-            'name': _('Devolución de Inventario'),
             'type': 'ir.actions.act_window',
-            'res_model': 'stock.return.picking',
+            'name': _('Picking Relacionado'),
+            'res_model': 'stock.picking',
             'view_mode': 'form',
-            'res_id': return_wizard.id,
-            'target': 'new',
+            'res_id': picking.id,
+            'target': 'new',  # Abrir en una ventana modal para mantener la conexión con la factura
         }
 
-        
+
+
+
     @api.multi
     def action_invoice_open(self):
         """
