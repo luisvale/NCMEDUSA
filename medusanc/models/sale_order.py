@@ -29,7 +29,8 @@ class StockPicking(models.Model):
 
     def action_return_picking_wizard(self):
         """
-        Abre automáticamente el wizard de devolución desde el picking.
+        Abre automáticamente el wizard de devolución desde el picking
+        y configura las líneas del wizard con los movimientos del picking.
         """
         self.ensure_one()
 
@@ -37,6 +38,19 @@ class StockPicking(models.Model):
         return_wizard = self.env['stock.return.picking'].create({
             'picking_id': self.id,
         })
+
+        # Crear las líneas del wizard basadas en los movimientos del picking
+        lines = []
+        for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
+            lines.append((0, 0, {
+                'product_id': move.product_id.id,
+                'quantity': move.quantity_done,
+                'move_id': move.id,
+            }))
+
+        # Escribir las líneas en el wizard
+        if lines:
+            return_wizard.write({'product_return_moves': lines})
 
         # Redirigir al wizard de devolución
         return {
