@@ -46,23 +46,21 @@ class StockReturnPicking(models.TransientModel):
 
     def create_returns(self):
         """
-        Sobrescribe la acción para:
-        1. Completar automáticamente el picking de devolución (estado done).
-        2. Redirigir al usuario a la factura relacionada.
+        Completa el flujo de devolución automáticamente:
+        1. Valida el movimiento de devolución creado.
+        2. Redirige automáticamente al formulario de la factura.
         """
         res = super(StockReturnPicking, self).create_returns()
 
         # Obtener el picking de devolución recién creado
         return_pickings = self.env['stock.picking'].browse(res.get('res_id', []))
         for return_picking in return_pickings:
+            # Confirmar el picking
             if return_picking.state in ['draft', 'waiting', 'confirmed']:
-                # Confirmar el picking
                 return_picking.action_confirm()
-
-                # Asignar productos
                 return_picking.action_assign()
 
-                # Marcar cantidades hechas y validar el picking
+                # Marcar las cantidades hechas y validar el picking
                 for move in return_picking.move_lines:
                     move.quantity_done = move.product_uom_qty
                 return_picking.button_validate()  # Validar el picking automáticamente
@@ -111,17 +109,7 @@ class AccountInvoice(models.Model):
         return picking.with_context({
             'return_to_invoice_id': self.id  # Contexto para regresar a la factura al cerrar
         }).action_return_picking_wizard()
-        
 
-    @api.multi
-    def action_invoice_open(self):
-        """
-        Modifica la validación de la nota de crédito para verificar el check.
-        """
-        for invoice in self:
-            if invoice.type == 'out_refund' and not invoice.check_return:
-                raise ValueError(_("No se puede validar la nota de crédito porque las devoluciones no están completadas."))
-        return super(AccountInvoice, self).action_invoice_open()
 
     @api.multi
     def action_invoice_open(self):
