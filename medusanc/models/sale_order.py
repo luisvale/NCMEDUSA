@@ -11,23 +11,23 @@ class AccountInvoice(models.Model):
 
     def action_open_return_wizard(self):
         """
-        Abre el wizard de devolución desde la factura para el usuario.
+        Abre el wizard de devolución desde la factura, filtrando los pickings por el origen de la factura.
         """
         self.ensure_one()
 
-        # Verificar si hay un pedido de venta relacionado
-        if not self.sale_order_id:
-            raise ValueError(_("No hay un pedido de venta relacionado a esta factura."))
+        # Verificar si hay un origen relacionado en la factura
+        if not self.origin:
+            raise ValueError(_("La factura no tiene un origen definido para buscar pickings relacionados."))
 
-        # Buscar pickings relacionados con el pedido de venta
+        # Buscar pickings relacionados con el origen de la factura
         pickings_done = self.env['stock.picking'].search([
-            ('sale_id', '=', self.sale_order_id.id),  # Relacionar con el pedido de venta
+            ('origin', '=', self.origin),  # Filtrar por el campo 'origin'
             ('state', '=', 'done')  # Solo pickings en estado 'done'
         ])
         if not pickings_done:
-            raise ValueError(_("No hay movimientos de inventario completados para devolver."))
+            raise ValueError(_("No hay movimientos de inventario completados para devolver relacionados con esta factura."))
 
-        # Tomar el primer picking (puedes ajustar si quieres manejar múltiples pickings)
+        # Tomar el primer picking (ajusta si necesitas manejar múltiples pickings)
         picking = pickings_done[0]
 
         # Crear el wizard de devolución
@@ -44,7 +44,7 @@ class AccountInvoice(models.Model):
             'res_id': return_wizard.id,
             'target': 'new',
         }
-
+        
     @api.multi
     def action_invoice_open(self):
         """
