@@ -6,23 +6,25 @@ class AccountInvoice(models.Model):
     check_return = fields.Boolean(
         string="Devolución Completada",
         default=False,
-        help="Este campo se activa automáticamente cuando se completa la devolución de los productos asociados a la factura."
+        help="Este campo se activa cuando el usuario completa las devoluciones relacionadas con los pickings del pedido."
     )
 
-    def action_open_return_wizard_from_invoice(self):
+    def action_open_return_wizard(self):
         """
-        Ejecuta el wizard de devolución desde la factura.
+        Abre el wizard de devolución desde la factura para el usuario.
         """
         self.ensure_one()
-        if not self.sale_order_id or not self.sale_order_id.picking_ids:
-            raise ValueError(_("No hay movimientos de inventario asociados a esta factura."))
 
-        # Filtrar los pickings en estado 'done'
+        # Verificar si hay un pedido de venta relacionado
+        if not self.sale_order_id:
+            raise ValueError(_("No hay un pedido de venta relacionado a esta factura."))
+
+        # Filtrar los pickings en estado 'done' relacionados al pedido
         pickings_done = self.sale_order_id.picking_ids.filtered(lambda p: p.state == 'done')
         if not pickings_done:
             raise ValueError(_("No hay movimientos de inventario completados para devolver."))
 
-        # Tomar el primer picking (puedes ajustar para manejar múltiples pickings)
+        # Tomar el primer picking (o ajusta si quieres manejar múltiples pickings)
         picking = pickings_done[0]
 
         # Crear el wizard de devolución
@@ -30,7 +32,7 @@ class AccountInvoice(models.Model):
             'picking_id': picking.id,
         })
 
-        # Redirigir al wizard
+        # Redirigir al wizard para que el usuario complete el proceso manualmente
         return {
             'name': _('Devolución de Inventario'),
             'type': 'ir.actions.act_window',
@@ -47,5 +49,5 @@ class AccountInvoice(models.Model):
         """
         for invoice in self:
             if invoice.type == 'out_refund' and not invoice.check_return:
-                raise ValueError(_("No se puede validar la nota de crédito porque la devolución de inventario no está completada."))
+                raise ValueError(_("No se puede validar la nota de crédito porque las devoluciones no están completadas."))
         return super(AccountInvoice, self).action_invoice_open()
