@@ -10,8 +10,10 @@ class AccountInvoice(models.Model):
             if invoice.type == 'out_refund' and invoice.refund_invoice_id:
                 # Obtener la factura relacionada
                 original_invoice = invoice.refund_invoice_id
-                if original_invoice.picking_ids:
-                    for picking in original_invoice.picking_ids.filtered(lambda p: p.state == 'done'):
+                # Acceder al pedido de venta relacionado si existe
+                sale_order = original_invoice.invoice_line_ids.mapped('sale_line_ids').mapped('order_id')
+                if sale_order and sale_order.picking_ids:
+                    for picking in sale_order.picking_ids.filtered(lambda p: p.state == 'done'):
                         self._create_inventory_return(picking, invoice)
         return res
 
@@ -24,7 +26,7 @@ class AccountInvoice(models.Model):
         })
         return_wizard_lines = []
         for move in picking.move_lines:
-            # Busca la línea correspondiente de la factura y verifica la cantidad devuelta
+            # Busca la línea correspondiente de la nota de crédito
             invoice_line = refund_invoice.invoice_line_ids.filtered(
                 lambda l: l.product_id == move.product_id and not l.product_id.type == 'service'
             )
