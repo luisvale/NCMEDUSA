@@ -11,7 +11,7 @@ class AccountInvoice(models.Model):
 
     def action_open_return_wizard(self):
         """
-        Abre el wizard de devolución desde la factura utilizando el picking especificado en 'validated_picking_id'.
+        Abre el wizard de devolución directamente desde el picking relacionado con la factura.
         """
         self.ensure_one()
 
@@ -19,7 +19,7 @@ class AccountInvoice(models.Model):
         if not self.validated_picking_id:
             raise ValueError(_("Esta factura no tiene un picking validado asociado para la devolución."))
 
-        # Asegurarse de que el picking está en estado 'done'
+        # Verificar si el picking está en estado 'done'
         picking = self.validated_picking_id
         if picking.state != 'done':
             raise ValueError(_("El picking asociado a esta factura no está en estado 'done'."))
