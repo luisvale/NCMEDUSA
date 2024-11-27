@@ -2,6 +2,38 @@ from odoo import models, fields, api, _
 
 
 
+class StockReturnPicking(models.TransientModel):
+    _inherit = 'stock.return.picking'
+
+    def create_returns(self):
+        """
+        Sobrescribe la acción para:
+        1. Confirmar automáticamente el movimiento de devolución (sin validar).
+        2. Redirigir al usuario a la factura relacionada.
+        """
+        res = super(StockReturnPicking, self).create_returns()
+
+        # Obtener el picking de devolución recién creado
+        return_pickings = self.env['stock.picking'].browse(res.get('res_id', []))
+        for return_picking in return_pickings:
+            if return_picking.state in ['draft', 'waiting']:
+                # Confirmar automáticamente el picking de devolución
+                return_picking.action_confirm()
+
+        # Si el contexto incluye una factura, redirigir al formulario de la factura
+        if self.env.context.get('return_to_invoice_id'):
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Factura'),
+                'res_model': 'account.invoice',
+                'view_mode': 'form',
+                'res_id': self.env.context['return_to_invoice_id'],
+                'target': 'current',  # Regresar a la factura en la misma pestaña
+            }
+
+        return res
+
+
 from odoo import models, api, _
 
 class StockReturnPicking(models.TransientModel):
@@ -42,7 +74,6 @@ class StockReturnPicking(models.TransientModel):
             }
 
         return res
-
 
 
 class StockPicking(models.Model):
