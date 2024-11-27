@@ -24,6 +24,7 @@ class StockReturnPicking(models.TransientModel):
         return res
 
 
+
 class StockPicking(models.Model):
     _inherit = 'stock.picking'
 
@@ -34,9 +35,10 @@ class StockPicking(models.Model):
         """
         self.ensure_one()
 
-        # Crear el wizard de devolución
+        # Crear el wizard de devolución con la ubicación de devolución
         return_wizard = self.env['stock.return.picking'].create({
             'picking_id': self.id,
+            'location_id': self.location_id.id,  # Asignar ubicación del picking
         })
 
         # Crear las líneas del wizard basadas en los movimientos del picking
