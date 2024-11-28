@@ -68,7 +68,7 @@ class StockPicking(models.Model):
                 'price_unit': invoice_line.price_unit,  # Usar el precio unitario de la línea original
                 'name': move.product_id.name,
                 'account_id': invoice_line.account_id.id,  # Cuenta de la línea de factura
-                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if 'tax_ids' in invoice_line else [],  # Verificar si 'tax_ids' existe
+                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if invoice_line.tax_ids else [],  # Validar si 'tax_ids' existe
             }))
 
         # Crear la nota de crédito
@@ -76,6 +76,7 @@ class StockPicking(models.Model):
             'move_type': 'out_refund',
             'partner_id': invoice.partner_id.id,
             'invoice_origin': invoice.name,
+            'journal_id': invoice.journal_id.id,  # Usar el mismo diario que la factura original
             'invoice_line_ids': credit_note_lines,
         })
 
@@ -87,7 +88,6 @@ class StockPicking(models.Model):
             'res_id': credit_note.id,
             'target': 'current',  # Abrir la nota de crédito en la misma pestaña
         }
-
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
