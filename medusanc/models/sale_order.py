@@ -48,26 +48,26 @@ class StockPicking(models.Model):
         """
         self.ensure_one()
 
-        if not self.validated_invoice_id:
-            raise ValueError(_("No hay una factura asociada a este picking."))
-
         # Obtener la factura relacionada
         invoice = self.validated_invoice_id
 
-        # Verificar que la acción 205 está disponible
-        action = self.env.ref('account.action_invoice_refund')
-        if not action:
-            raise ValueError(_("No se encontró la acción de Nota de Crédito."))
+        # Configurar el contexto para ejecutar la acción de Nota de Crédito (ID 205)
+        ctx = dict(self.env.context)
+        ctx.update({
+            'default_refund_method': 'refund',  # Método predeterminado para la nota de crédito
+            'active_model': 'account.invoice',
+            'active_id': invoice.id,
+            'active_ids': [invoice.id],
+        })
 
-        # Redirigir a la factura y emular el clic en el botón
+        # Devolver la acción para ejecutar el botón de Nota de Crédito
         return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-            'params': {
-                'model': 'account.invoice',
-                'id': invoice.id,
-                'action_id': 205,  # ID del botón de Nota de Crédito
-            },
+            'name': _('Nota de Crédito'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.invoice.refund',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': ctx,
         }
 
 class StockReturnPicking(models.TransientModel):
