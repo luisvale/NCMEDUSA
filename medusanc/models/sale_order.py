@@ -44,7 +44,7 @@ class StockPicking(models.Model):
 
     def action_create_credit_note(self):
         """
-        Navega a la factura relacionada y ejecuta automáticamente el botón de generar Nota de Crédito.
+        Navega a la factura relacionada y ejecuta automáticamente el botón para agregar una Nota de Crédito.
         """
         self.ensure_one()
 
@@ -54,25 +54,20 @@ class StockPicking(models.Model):
         # Obtener la factura relacionada
         invoice = self.validated_invoice_id
 
-        # Verificar que el botón de Nota de Crédito se puede accionar
-        if not hasattr(invoice, 'action_invoice_refund'):
-            raise ValueError(_("La factura no tiene un método para crear una Nota de Crédito."))
+        # Verificar que la acción 205 está disponible
+        action = self.env.ref('account.action_invoice_refund')
+        if not action:
+            raise ValueError(_("No se encontró la acción de Nota de Crédito."))
 
-        # Ejecutar el botón para generar la Nota de Crédito automáticamente
-        action = invoice.with_context(open_credit_note_form=True).action_invoice_refund()
-
-        # Abrir la Nota de Crédito creada
-        if isinstance(action, dict):
-            return action
-
-        # Si no se devolvió un diccionario, navegar manualmente a la factura original
+        # Redirigir a la factura y emular el clic en el botón
         return {
-            'name': _('Factura Relacionada'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'account.invoice',
-            'view_mode': 'form',
-            'res_id': invoice.id,
-            'target': 'current',  # Abrir en la misma pestaña
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+            'params': {
+                'model': 'account.invoice',
+                'id': invoice.id,
+                'action_id': 205,  # ID del botón de Nota de Crédito
+            },
         }
 
 class StockReturnPicking(models.TransientModel):
