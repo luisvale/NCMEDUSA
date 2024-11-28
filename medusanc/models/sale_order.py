@@ -43,7 +43,8 @@ class StockPicking(models.Model):
 
     def action_create_credit_note(self):
         """
-        Genera una nota de crédito basada en los productos y cantidades del picking actual.
+        Genera una nota de crédito basada en los productos y cantidades del picking actual,
+        vinculándola como rectificativa de la factura original.
         """
         self.ensure_one()
 
@@ -68,16 +69,17 @@ class StockPicking(models.Model):
                 'price_unit': invoice_line.price_unit,  # Usar el precio unitario de la línea original
                 'name': move.product_id.name,
                 'account_id': invoice_line.account_id.id,  # Cuenta de la línea de factura
-                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if invoice_line.tax_ids else [],  # Validar si 'tax_ids' existe
+                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if invoice_line.tax_ids else [],
             }))
 
-        # Crear la nota de crédito
+        # Crear la nota de crédito como rectificativa
         credit_note = self.env['account.move'].create({
             'move_type': 'out_refund',
             'partner_id': invoice.partner_id.id,
             'invoice_origin': invoice.name,
             'journal_id': invoice.journal_id.id,  # Usar el mismo diario que la factura original
             'invoice_line_ids': credit_note_lines,
+            'reversed_entry_id': invoice.id,  # Enlazar con la factura original
         })
 
         return {
