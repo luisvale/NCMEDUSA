@@ -44,29 +44,36 @@ class StockPicking(models.Model):
 
     def action_create_credit_note(self):
         """
-        Crea y abre una nota de crédito basada en la factura original referenciada en validated_invoice_id.
+        Navega a la factura relacionada y ejecuta automáticamente el botón de generar Nota de Crédito.
         """
         self.ensure_one()
 
         if not self.validated_invoice_id:
             raise ValueError(_("No hay una factura asociada a este picking."))
 
-        # Obtener la factura original
+        # Obtener la factura relacionada
         invoice = self.validated_invoice_id
 
-        # Crear el wizard de nota de crédito y agregar el reference_code_id
-        refund_wizard = self.env['account.invoice.refund'].create({
-            'description': _('Devolución relacionada con el picking %s') % self.name,
-            'filter_refund': 'refund',  # Opción estándar de reembolso
-            'reference_code_id': invoice.id,  # Establecer el campo obligatorio
-        })
+        # Verificar que el botón de Nota de Crédito se puede accionar
+        if not hasattr(invoice, 'action_invoice_refund'):
+            raise ValueError(_("La factura no tiene un método para crear una Nota de Crédito."))
 
-        # Abrir el wizard con el contexto adecuado
-        return refund_wizard.with_context({
-            'active_ids': [invoice.id],
-            'active_id': invoice.id,
-        }).invoice_refund()
+        # Ejecutar el botón para generar la Nota de Crédito automáticamente
+        action = invoice.with_context(open_credit_note_form=True).action_invoice_refund()
 
+        # Abrir la Nota de Crédito creada
+        if isinstance(action, dict):
+            return action
+
+        # Si no se devolvió un diccionario, navegar manualmente a la factura original
+        return {
+            'name': _('Factura Relacionada'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.invoice',
+            'view_mode': 'form',
+            'res_id': invoice.id,
+            'target': 'current',  # Abrir en la misma pestaña
+        }
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
