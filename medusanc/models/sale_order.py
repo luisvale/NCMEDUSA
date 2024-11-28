@@ -54,14 +54,14 @@ class StockPicking(models.Model):
         # Configurar el contexto para ejecutar la acción de Nota de Crédito (ID 205)
         ctx = dict(self.env.context)
         ctx.update({
-            'default_refund_method': 'refund',  # Método predeterminado para la nota de crédito
+            'default_refund_method': 'refund',
             'active_model': 'account.invoice',
             'active_id': invoice.id,
             'active_ids': [invoice.id],
         })
 
-        # Devolver la acción para ejecutar el botón de Nota de Crédito
-        return {
+        # Crear la acción para abrir el wizard de Nota de Crédito
+        action = {
             'name': _('Nota de Crédito'),
             'type': 'ir.actions.act_window',
             'res_model': 'account.invoice.refund',
@@ -69,6 +69,17 @@ class StockPicking(models.Model):
             'target': 'new',
             'context': ctx,
         }
+
+        # Relacionar el picking al campo 'validated_picking_id' en la nota de crédito creada
+        refund_model = self.env['account.invoice.refund']
+        refund_wizard = refund_model.create({
+            'filter_refund': 'refund',
+            'description': _('Nota de Crédito para devolución.'),
+        })
+        refund_wizard.invoice_id = invoice.id
+        refund_wizard.validated_picking_id = self.id
+
+        return action
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
@@ -154,6 +165,29 @@ class AccountInvoice(models.Model):
                     picking.action_assign()
                     for move_line in picking.move_lines:
                         move_line.quantity_done = move_line.product_uom_qty
+                    picking.button_validate()
+
+        return res
+
+    def action_invoice_open(self):
+        """
+        Sobrescribe la validación de la factura para validar el picking relacionado con la Nota de Crédito.
+        """
+        res = super(AccountInvoice, self).action_invoice_open()
+
+        for invoice in self:
+            if invoice.type == 'out_refund' and invoice.validated_picking_id:
+                picking = invoice.validated_picking_id
+                if picking.state not in ['done', 'cancel']:
+                    # Confirmar el picking
+                    picking.action_confirm()
+                    picking.action_assign()
+
+                    # Marcar las cantidades como realizadas
+                    for move in picking.move_lines:
+                        move.quantity_done = move.product_uom_qty
+
+                    # Validar el picking
                     picking.button_validate()
 
         return res
