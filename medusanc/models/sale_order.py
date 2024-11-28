@@ -41,33 +41,27 @@ class StockPicking(models.Model):
         }
 
 
-
     def action_create_credit_note(self):
         """
-        Crea y abre el asistente de nota de crédito vinculado a la factura relacionada.
+        Abre directamente la factura relacionada y ejecuta el botón para crear una nota de crédito.
         """
         self.ensure_one()
 
         if not self.validated_invoice_id:
             raise ValueError(_("No hay una factura asociada a este picking."))
 
-        # Crear el contexto para abrir el asistente de nota de crédito
-        ctx = dict(self.env.context)
-        ctx.update({
-            'active_model': 'account.invoice',
-            'active_ids': [self.validated_invoice_id.id],
-            'default_type': 'out_refund',  # Asegurarse de que sea una nota de crédito
-        })
-
+        # Redirigir a la factura relacionada para ejecutar el botón de nota de crédito
         return {
-            'name': _('Crear Nota de Crédito'),
             'type': 'ir.actions.act_window',
-            'res_model': 'account.invoice.refund',
+            'name': _('Factura'),
+            'res_model': 'account.invoice',
             'view_mode': 'form',
-            'target': 'new',  # Abre como ventana modal
-            'context': ctx,
+            'res_id': self.validated_invoice_id.id,
+            'target': 'current',
+            'context': {'default_type': 'out_refund'},  # Contexto para notas de crédito
         }
-        
+
+
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
 
