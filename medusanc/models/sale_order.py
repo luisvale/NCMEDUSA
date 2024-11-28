@@ -56,13 +56,19 @@ class StockPicking(models.Model):
         # Crear las líneas de la nota de crédito usando los movimientos del picking
         credit_note_lines = []
         for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
+            # Buscar la línea de factura correspondiente al producto
+            invoice_line = invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id)
+            if not invoice_line:
+                raise ValueError(_("No se encontró una línea de factura para el producto %s") % move.product_id.display_name)
+
+            # Crear las líneas de la nota de crédito
             credit_note_lines.append((0, 0, {
                 'product_id': move.product_id.id,
                 'quantity': move.quantity_done,
-                'price_unit': move.product_id.lst_price,  # Puedes ajustar según sea necesario
+                'price_unit': invoice_line.price_unit,  # Usar el precio unitario de la línea original
                 'name': move.product_id.name,
-                'account_id': invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id).mapped('account_id').id or False,
-                'tax_ids': [(6, 0, invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id).mapped('tax_ids').ids)],
+                'account_id': invoice_line.account_id.id,  # Cuenta de la línea de factura
+                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if 'tax_ids' in invoice_line else [],  # Verificar si 'tax_ids' existe
             }))
 
         # Crear la nota de crédito
@@ -81,7 +87,6 @@ class StockPicking(models.Model):
             'res_id': credit_note.id,
             'target': 'current',  # Abrir la nota de crédito en la misma pestaña
         }
-
 
 
 class StockReturnPicking(models.TransientModel):
