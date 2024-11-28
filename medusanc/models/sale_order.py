@@ -43,53 +43,18 @@ class StockPicking(models.Model):
 
     def action_create_credit_note(self):
         """
-        Genera una nota de crédito basada en los productos y cantidades del picking actual,
-        vinculándola como rectificativa de la factura original.
+        Crea y abre una nota de crédito basada en la factura original referenciada en validated_invoice_id.
         """
         self.ensure_one()
 
         if not self.validated_invoice_id:
-            raise ValueError(_("Este picking no tiene una factura validada asociada."))
+            raise ValueError(_("No hay una factura asociada a este picking."))
 
-        # Obtener la factura relacionada desde el campo validated_invoice_id
+        # Obtener la factura original
         invoice = self.validated_invoice_id
 
-        # Crear las líneas de la nota de crédito usando los movimientos del picking
-        credit_note_lines = []
-        for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
-            # Buscar la línea de factura correspondiente al producto
-            invoice_line = invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id)
-            if not invoice_line:
-                raise ValueError(_("No se encontró una línea de factura para el producto %s") % move.product_id.display_name)
-
-            # Crear las líneas de la nota de crédito
-            credit_note_lines.append((0, 0, {
-                'product_id': move.product_id.id,
-                'quantity': move.quantity_done,
-                'price_unit': invoice_line.price_unit,  # Usar el precio unitario de la línea original
-                'name': move.product_id.name,
-                'account_id': invoice_line.account_id.id,  # Cuenta de la línea de factura
-                'tax_ids': [(6, 0, invoice_line.tax_ids.ids)] if invoice_line.tax_ids else [],
-            }))
-
-        # Crear la nota de crédito como rectificativa
-        credit_note = self.env['account.move'].create({
-            'move_type': 'out_refund',
-            'partner_id': invoice.partner_id.id,
-            'invoice_origin': invoice.name,
-            'journal_id': invoice.journal_id.id,  # Usar el mismo diario que la factura original
-            'invoice_line_ids': credit_note_lines,
-            'reversed_entry_id': invoice.id,  # Enlazar con la factura original
-        })
-
-        return {
-            'name': _('Nota de Crédito'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'account.move',
-            'view_mode': 'form',
-            'res_id': credit_note.id,
-            'target': 'current',  # Abrir la nota de crédito en la misma pestaña
-        }
+        # Ejecutar el método de creación de nota de crédito en la factura original
+        return invoice.with_context(default_refund_method='refund').action_create_refund()
 
 class StockReturnPicking(models.TransientModel):
     _inherit = 'stock.return.picking'
@@ -178,3 +143,27 @@ class AccountInvoice(models.Model):
                     picking.button_validate()
 
         return res
+
+class AccountMove(models.Model):
+    _inherit = 'account.move'
+
+    def action_create_refund(self):
+        """
+        Crear una nota de crédito a partir de esta factura.
+        """
+        self.ensure_one()
+
+        if self.state != 'posted':
+            raise ValueError(_("La factura debe estar validada antes de generar una nota de crédito."))
+
+        refund = self.copy(default={'move_type': 'out_refund', 'reversed_entry_id': self.id})
+
+        # Agregar el contexto para abrir la vista de la nota de crédito
+        return {
+            'name': _('Nota de Crédito'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move',
+            'view_mode': 'form',
+            'res_id': refund.id,
+            'target': 'current',  # Abre la nota de crédito en la misma pestaña
+        }
