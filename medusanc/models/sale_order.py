@@ -41,25 +41,27 @@ class StockPicking(models.Model):
         }
 
 
+
     def action_create_credit_note(self):
         """
-        Abre directamente la factura relacionada y ejecuta el botón para crear una nota de crédito.
+        Navega a la factura relacionada y automáticamente ejecuta el botón para generar una nota de crédito.
         """
         self.ensure_one()
 
         if not self.validated_invoice_id:
             raise ValueError(_("No hay una factura asociada a este picking."))
 
-        # Redirigir a la factura relacionada para ejecutar el botón de nota de crédito
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('Factura'),
-            'res_model': 'account.invoice',
-            'view_mode': 'form',
-            'res_id': self.validated_invoice_id.id,
-            'target': 'current',
-            'context': {'default_type': 'out_refund'},  # Contexto para notas de crédito
-        }
+        # Crear directamente la nota de crédito desde la factura relacionada
+        refund_wizard = self.env['account.invoice.refund'].create({
+            'description': _('Devolución relacionada con el picking %s') % self.name,
+            'filter_refund': 'refund',  # Opción de reembolso estándar
+        })
+
+        # Abrir el wizard de la nota de crédito con la configuración aplicada
+        return refund_wizard.with_context({
+            'active_ids': [self.validated_invoice_id.id],
+            'active_id': self.validated_invoice_id.id,
+        }).invoice_refund()
 
 
 class StockReturnPicking(models.TransientModel):
