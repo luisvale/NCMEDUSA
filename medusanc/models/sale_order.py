@@ -41,56 +41,46 @@ class StockPicking(models.Model):
         }
 
 
-    def action_create_credit_note(self):
-        """
-        Genera una nota de crédito basada en los productos y cantidades del picking.
-        """
-        self.ensure_one()  # Asegurarse de que el botón se ejecuta sobre un único picking
+def action_create_credit_note(self):
+    """
+    Genera una nota de crédito basada en los productos y cantidades del picking actual.
+    """
+    self.ensure_one()
 
-        if self.state != 'done':
-            raise ValueError(_("El picking debe estar en estado 'done' para generar una nota de crédito."))
+    if not self.validated_invoice_id:
+        raise ValueError(_("Este picking no tiene una factura validada asociada."))
 
-        # Buscar la factura original relacionada
-        invoice = self.env['account.move'].search([
-            ('validated_picking_id', '=', self.id),
-            ('state', '=', 'posted'),
-            ('move_type', '=', 'out_invoice')
-        ], limit=1)
+    # Obtener la factura relacionada desde el campo validated_invoice_id
+    invoice = self.validated_invoice_id
 
-        if not invoice:
-            raise ValueError(_("No se encontró una factura relacionada con este picking."))
+    # Crear las líneas de la nota de crédito usando los movimientos del picking
+    credit_note_lines = []
+    for move in self.move_lines.filtered(lambda m: m.quantity_done > 0):
+        credit_note_lines.append((0, 0, {
+            'product_id': move.product_id.id,
+            'quantity': move.quantity_done,
+            'price_unit': move.product_id.lst_price,  # Puedes ajustar según sea necesario
+            'name': move.product_id.name,
+            'account_id': invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id).mapped('account_id').id or False,
+            'tax_ids': [(6, 0, invoice.invoice_line_ids.filtered(lambda l: l.product_id == move.product_id).mapped('tax_ids').ids)],
+        }))
 
-        # Crear las líneas de la nota de crédito
-        credit_note_lines = []
-        for move in self.move_lines:
-            if move.quantity_done > 0:  # Considerar solo los productos efectivamente entregados
-                credit_note_lines.append((0, 0, {
-                    'product_id': move.product_id.id,
-                    'quantity': move.quantity_done,
-                    'price_unit': move.product_id.lst_price,  # Precio unitario, puedes ajustarlo según necesidad
-                    'name': move.product_id.name,
-                    'tax_ids': [(6, 0, move.product_id.taxes_id.ids)],  # Impuestos del producto
-                    'account_id': invoice.line_ids[0].account_id.id,  # Usar la cuenta de la línea de factura original
-                }))
+    # Crear la nota de crédito
+    credit_note = self.env['account.move'].create({
+        'move_type': 'out_refund',
+        'partner_id': invoice.partner_id.id,
+        'invoice_origin': invoice.name,
+        'invoice_line_ids': credit_note_lines,
+    })
 
-        # Crear la nota de crédito
-        credit_note = self.env['account.move'].create({
-            'move_type': 'out_refund',
-            'partner_id': invoice.partner_id.id,
-            'invoice_date': fields.Date.today(),
-            'invoice_origin': self.origin,
-            'invoice_line_ids': credit_note_lines,
-        })
-
-        return {
-            'name': _('Nota de Crédito'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'account.move',
-            'view_mode': 'form',
-            'res_id': credit_note.id,
-            'target': 'current',
-        }
-
+    return {
+        'name': _('Nota de Crédito'),
+        'type': 'ir.actions.act_window',
+        'res_model': 'account.move',
+        'view_mode': 'form',
+        'res_id': credit_note.id,
+        'target': 'current',  # Abrir la nota de crédito en la misma pestaña
+    }
 
 
 
