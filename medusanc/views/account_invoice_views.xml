@@ -50,7 +50,7 @@
             </form>
         </field>
     </record>   
-     
+
     <record id="view_account_invoice_refund_inherit_custom" model="ir.ui.view">
         <field name="name">account.invoice.refund.form.inherit.custom</field>
         <field name="model">account.invoice.refund</field>
@@ -59,6 +59,22 @@
             <field name="description" position="after">
                 <field name="validated_picking_id" readonly="1"/>
             </field>
+        </field>
+    </record>
+
+        <record id="report_invoice_document_inherit_refund_note" model="ir.ui.view">
+        <field name="name">report.invoice.document.inherit.refund.note</field>
+        <field name="model">ir.ui.view</field>
+        <field name="inherit_id" ref="account.report_invoice_document"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@class='page']" position="inside">
+                <t t-if="o.type == 'out_refund' and o.invoice_id">
+                    <p class="text-center" style="margin-top: 20px; font-size: 14px; font-weight: bold;">
+                        Esta nota de crédito cancela o modifica el documento número 
+                        <span t-field="o.invoice_id.sequence"/>
+                    </p>
+                </t>
+            </xpath>
         </field>
     </record>
 </odoo>
