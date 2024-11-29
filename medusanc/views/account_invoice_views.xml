@@ -51,14 +51,14 @@
         </field>
     </record>   
      
-    <record id="view_account_invoice_refund_form" model="ir.ui.view">
-        <field name="name">account.invoice.refund.form.inherit</field>
+    <record id="view_account_invoice_refund_inherit_custom" model="ir.ui.view">
+        <field name="name">account.invoice.refund.form.inherit.custom</field>
         <field name="model">account.invoice.refund</field>
-        <field name="inherit_id" ref="account.view_account_invoice_refund_form"/>
+        <field name="inherit_id" ref="account.view_account_invoice_refund"/>
         <field name="arch" type="xml">
-            <group position="inside">
+            <field name="description" position="after">
                 <field name="validated_picking_id" readonly="1"/>
-            </group>
+            </field>
         </field>
     </record>
 </odoo>
