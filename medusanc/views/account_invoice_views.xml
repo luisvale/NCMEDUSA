@@ -33,4 +33,21 @@
             </xpath>
         </field>
     </record>
+
+    <record id="view_credit_note_picking_wizard_form" model="ir.ui.view">
+        <field name="name">credit.note.picking.wizard.form</field>
+        <field name="model">credit.note.picking.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Asociar Movimiento de Inventario">
+                <group>
+                    <field name="picking_id" readonly="1"/>
+                    <field name="credit_note_id" readonly="1"/>
+                </group>
+                <footer>
+                    <button string="Validar Movimiento" type="object" name="action_validate_picking" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>    
 </odoo>

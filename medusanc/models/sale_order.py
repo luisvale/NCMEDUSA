@@ -44,14 +44,14 @@ class StockPicking(models.Model):
 
     def action_create_credit_note(self):
         """
-        Navega a la factura relacionada y ejecuta automáticamente el botón para agregar una Nota de Crédito.
+        Navega a la factura relacionada, crea la Nota de Crédito y abre un wizard para asociar y validar el movimiento de inventario.
         """
         self.ensure_one()
 
         # Obtener la factura relacionada
         invoice = self.validated_invoice_id
 
-        # Configurar el contexto para ejecutar la acción de Nota de Crédito (ID 205)
+        # Configurar el contexto para ejecutar la acción de Nota de Crédito
         ctx = dict(self.env.context)
         ctx.update({
             'default_refund_method': 'refund',
@@ -60,7 +60,7 @@ class StockPicking(models.Model):
             'active_ids': [invoice.id],
         })
 
-        # Crear la acción para abrir el wizard de Nota de Crédito
+        # Crear la acción de la Nota de Crédito
         action = {
             'name': _('Nota de Crédito'),
             'type': 'ir.actions.act_window',
@@ -70,14 +70,20 @@ class StockPicking(models.Model):
             'context': ctx,
         }
 
-        # Relacionar el picking al campo 'validated_picking_id' en la nota de crédito creada
-        refund_model = self.env['account.invoice.refund']
-        refund_wizard = refund_model.create({
-            'filter_refund': 'refund',
-            'description': _('Nota de Crédito para devolución.'),
-        })
-        refund_wizard.invoice_id = invoice.id
-        refund_wizard.validated_picking_id = self.id
+        # Abrir el wizard para asociar el picking después de la Nota de Crédito
+        if self.validated_invoice_id:
+            wizard = self.env['credit.note.picking.wizard'].create({
+                'picking_id': self.id,
+                'credit_note_id': invoice.id,
+            })
+            return {
+                'name': _('Asociar Movimiento de Inventario'),
+                'type': 'ir.actions.act_window',
+                'res_model': 'credit.note.picking.wizard',
+                'view_mode': 'form',
+                'res_id': wizard.id,
+                'target': 'new',
+            }
 
         return action
 
@@ -214,4 +220,37 @@ class AccountMove(models.Model):
             'view_mode': 'form',
             'res_id': refund.id,
             'target': 'current',  # Abre la nota de crédito en la misma pestaña
+        }
+
+
+class CreditNotePickingWizard(models.TransientModel):
+    _name = 'credit.note.picking.wizard'
+    _description = 'Wizard para asociar y validar el movimiento de inventario relacionado con la Nota de Crédito'
+
+    picking_id = fields.Many2one('stock.picking', string="Movimiento de Inventario", required=True, readonly=True)
+    credit_note_id = fields.Many2one('account.invoice', string="Nota de Crédito", required=True, readonly=True)
+
+    def action_validate_picking(self):
+        """
+        Valida el movimiento de inventario seleccionado.
+        """
+        self.ensure_one()
+        picking = self.picking_id
+
+        if picking.state not in ['done', 'cancel']:
+            # Confirmar y asignar el picking
+            picking.action_confirm()
+            picking.action_assign()
+
+            # Marcar las cantidades como realizadas
+            for move in picking.move_lines:
+                move.quantity_done = move.product_uom_qty
+
+            # Validar el picking
+            picking.button_validate()
+
+        # Mensaje de éxito
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
         }
